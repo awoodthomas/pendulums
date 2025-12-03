@@ -1,17 +1,17 @@
-from typing import Optional
-
-import py5
 import jax
 import jax.numpy as jnp
 import numpy as np
 import math
 import time
 import os
+from vispy import app, scene
+from vispy.color import get_colormap
+
 import pendulums
-from pendulums import PendulumMetadata, Py5PendulumAnimation
+from pendulums import PendulumMetadata, PendulumAnimation
 
 
-class KN_Pendulum_JAX(Py5PendulumAnimation):
+class KN_Pendulum_JAX(PendulumAnimation):
     """n-pendulum simulation using JAX for acceleration and batching."""
     P_MAGNITUDE = 1e-5
     STEP_SIZE = 0.02
@@ -35,21 +35,47 @@ class KN_Pendulum_JAX(Py5PendulumAnimation):
                                            minval=-self.P_MAGNITUDE,
                                            maxval=self.P_MAGNITUDE)
         self.states = self.states.at[:, :n].add(perturbations[:, :n])
-
         self.steps = 0
-        self.last_step_time: Optional[float] = None
-        self.draw_trails = draw_trails
-        self.last_points: Optional[np.ndarray] = None
 
         print("JIT-compiling vectorized RK4 stepper...")
         self.rk4_step_batch = jax.jit(jax.vmap(pendulums.n_pendulum_rk4_step_jax,
                                                in_axes=(0, None, None, None, None, None)),
                                       static_argnums=(5,))
         print("Warming up JIT...")
+        t = time.time()
         if ENABLE_PROFILING:
             jax.profiler.start_trace("/tmp/profile-data")
         self.rk4_step_batch(self.states, 0.0, self.STEP_SIZE,
                             self.m_jax, self.r_jax, self.metadata.n_pendulums).block_until_ready()
+        print(f"JIT warmup complete after {time.time()-t}s.")
+
+    def setup(self) -> None:
+        """Set up vispy graphics objects for drawing pendulums."""
+        thetas_np = np.asarray(self.states)[:, 0:self.metadata.n_pendulums]
+        per_pendulum = self.metadata.n_pendulums*2
+        pos = np.zeros(shape=(per_pendulum*self.k, 2))
+        colors = np.repeat(colormap[np.linspace(
+            0, 1, self.k)], per_pendulum, axis=0)
+        for i in range(self.k):
+            x0, y0 = self.origin_x, self.origin_y
+            pos[0, :] = [x0, y0]
+            for j in range(self.metadata.n_pendulums):
+                x = x0 + self.metadata.lengths[j] * self.m_to_px * \
+                    math.sin(thetas_np[i, j])
+                y = y0 - self.metadata.lengths[j] * self.m_to_px * \
+                    math.cos(thetas_np[i, j])
+                pos[i*per_pendulum + j*2, :] = [x0, y0]
+                pos[i*per_pendulum + j*2+1, :] = [x, y]
+                x0, y0 = x, y
+        # Using individual line segments for each pendulum is slow, you can't get
+        # more than about 200 pendulums in real time. A single line defined by
+        # segments is much faster.
+        # method = 'agg' would let us do lines with width>1, but isn't working for me.
+        line = scene.visuals.Line(
+            pos=pos, color=colors, width=1, connect='segments', parent=view.scene, method='gl')
+        self.pendulum_lines = line
+
+        print("Finished vispy setup, starting to draw.")
 
     def predraw_update(self) -> None:
         with jax.profiler.StepTraceAnnotation("integration_step"):
@@ -63,82 +89,65 @@ class KN_Pendulum_JAX(Py5PendulumAnimation):
             n_steps = int((t - self.last_step_time) / self.STEP_SIZE)
             if n_steps > 0:
                 for _ in range(n_steps):
-                    self.states = self.rk4_step_batch(
-                        self.states, t, self.STEP_SIZE, self.m_jax, self.r_jax, self.metadata.n_pendulums).block_until_ready()
+                    with jax.profiler.StepTraceAnnotation("substep"):
+                        self.states = self.rk4_step_batch(
+                            self.states, t, self.STEP_SIZE, self.m_jax, self.r_jax, self.metadata.n_pendulums).block_until_ready()
                 self.last_step_time += n_steps * self.STEP_SIZE
 
             if ENABLE_PROFILING and self.steps == 30:
                 jax.profiler.stop_trace()
                 print("Stopped profiling trace.")
 
-    def draw(self) -> None:
+    def update_pendulums(self) -> None:
         with jax.profiler.StepTraceAnnotation("draw_step", step_num=self.steps):
-            with jax.profiler.TraceAnnotation("background draw"):
-                # Gradient background
-                py5.image(self.background_graphics, 0, 0)  # type: ignore
-
             # Convert the JAX state angles to numpy floats for drawing (do once, not per pendulum)
             with jax.profiler.TraceAnnotation("numpy conversion"):
                 thetas_np = np.asarray(self.states)[
                     :, 0:self.metadata.n_pendulums]
 
             # Draw rods and bobs with shadows and gradients
-            points = np.zeros((self.k, 2))
-            with jax.profiler.TraceAnnotation("drawing pendulums"):
-                py5.stroke_weight(6)
-                py5.color_mode(py5.CMAP, py5.mpl_cmaps.PLASMA, self.k, 1)
+            # At 1000 pendulums, this takes about 90 ms.
+            # TODO: do this in Jax?
+            with jax.profiler.TraceAnnotation("updating pendulums"):
+                per_pendulum = self.metadata.n_pendulums*2
+                pos = np.zeros(shape=(per_pendulum*self.k, 2))
                 for i in range(self.k):
                     x0, y0 = self.origin_x, self.origin_y
-                    py5.stroke(i, 0.5)
+                    pos[0, :] = [x0, y0]
                     for j in range(self.metadata.n_pendulums):
                         x = x0 + self.metadata.lengths[j] * self.m_to_px * \
                             math.sin(thetas_np[i, j])
-                        y = y0 + self.metadata.lengths[j] * self.m_to_px * \
+                        y = y0 - self.metadata.lengths[j] * self.m_to_px * \
                             math.cos(thetas_np[i, j])
-                        py5.line(x0, y0, x, y)
+                        pos[i*per_pendulum + j*2, :] = [x0, y0]
+                        pos[i*per_pendulum + j*2+1, :] = [x, y]
                         x0, y0 = x, y
-                    if self.draw_trails:
-                        if self.last_points is not None:
-                            py5.stroke(0, 1)
-                            self.trail_graphics.begin_draw()
-                            self.trail_graphics.no_fill()
-                            self.trail_graphics.line(
-                                self.last_points[i, 0], self.last_points[i, 1], x0, y0)
-                            self.trail_graphics.end_draw()
-                            py5.image(self.trail_graphics, 0, 0)
-                        points[i, 0] = x0
-                        points[i, 1] = y0
-                if self.draw_trails:
-                    self.last_points = points
+                self.pendulum_lines.set_data(pos=pos)
 
 
-def settings() -> None:
-    _animation.settings()
-
-
-def setup() -> None:
-    _animation.setup()
-
-
-def predraw_update() -> None:
+def on_timer(event):
     _animation.predraw_update()
-
-
-def draw() -> None:
-    _animation.draw()
+    _animation.update_pendulums()
+    _animation.steps = _animation.steps + 1
+    if ENABLE_PROFILING and _animation.steps == 20:
+        jax.profiler.stop_trace()
+        print("Stopped profiling trace.")
 
 
 ENABLE_PROFILING = os.environ.get(
     "PROFILE", "0") not in ("0", "False", "false")
 
 _animation: KN_Pendulum_JAX
-
+canvas = scene.SceneCanvas(keys='interactive', size=(1000, 1000), show=True)
+colormap = get_colormap('plasma')
+timer = app.Timer(1.0/30, connect=on_timer, start=True)
 
 if __name__ == "__main__":
     # Pendulum initial conditions
-    theta = np.array([math.pi*0.8, math.pi*0.5])
+    theta = np.array([math.pi*0.5, math.pi*0.5, 0, math.pi*0.5])
     n = theta.shape[0]
-    omega = np.array([0.0 for _ in range(n)])
+    omega = np.zeros(n)
+    # omega[0:3] = -math.pi*5
     state0 = np.concatenate((theta, omega))
     m = np.ones(n)  # masses
     r = np.ones(n)
@@ -148,10 +157,15 @@ if __name__ == "__main__":
             lengths=r,
         ),
         state0=state0,
-        k=60,
+        k=4000,
         fps=30,
         m_to_px=200,
         draw_trails=True
     )
-
-    py5.run_sketch()
+    view = canvas.central_widget.add_view()
+    view.camera = 'panzoom'
+    view.camera.set_range(x=(0, _animation.extent_px),
+                          y=(0, _animation.extent_px))
+    _animation.setup()
+    canvas.show()
+    app.run()

@@ -35,7 +35,7 @@ class PendulumMetadata:
 
 
 class PendulumAnimation:
-    """Base class for pendulum animation, managing display and graphics."""
+    """Base class for pendulum animation, managing timing and state."""
 
     def __init__(
         self,
@@ -49,10 +49,32 @@ class PendulumAnimation:
 
         # Calculate canvas size from pendulum lengths
         self.extent_px = round(np.sum(metadata.lengths) * m_to_px * 2) + 75
-        self.origin_x = self.extent_px / 2.0
-        self.origin_y = self.extent_px / 2.0
+        self.origin_x = self.extent_px // 2
+        self.origin_y = self.extent_px // 2
 
-        # Graphics objects (initialized in setup)
+        self.steps = 0
+
+    def setup(self) -> None:
+        """Setup method to be overridden by subclasses."""
+        pass
+
+    def predraw_update(self) -> None:
+        """Update method to be overridden by subclasses."""
+        pass
+
+
+class Py5PendulumAnimation(PendulumAnimation):
+    """Base class for pendulum animation, managing display and graphics."""
+
+    def __init__(
+        self,
+        metadata: PendulumMetadata,
+        fps: int = 30,
+        m_to_px: int = 200,
+    ):
+        super().__init__(metadata, fps, m_to_px)
+
+        # Py5 graphics objects (initialized in setup)
         self.background_graphics: Any = None
         self.trail_graphics: Any = None
 

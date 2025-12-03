@@ -8,10 +8,10 @@ import time
 import os
 import scipy.integrate
 import pendulums
-from pendulums import PendulumMetadata, PendulumAnimation
+from pendulums import PendulumMetadata, Py5PendulumAnimation
 
 
-class TrailProjectionAnimation(PendulumAnimation):
+class TrailProjectionAnimation(Py5PendulumAnimation):
     """Extended animation with trail tracking and future perturbed path projections."""
 
     class PerturbationSettings():
