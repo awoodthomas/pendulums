@@ -21,7 +21,8 @@ class KN_Pendulum_JAX(PendulumAnimation):
                  state0: np.ndarray,
                  k: int = 10,
                  fps: int = 30,
-                 m_to_px: int = 150) -> None:
+                 m_to_px: int = 150,
+                 draw_trails: bool = False) -> None:
         super().__init__(pendulum_metadata, fps, m_to_px)
         self.k = k  # Number of perturbed trajectories
         # TODO: can we pass this in as some sort of dict for metadata?
@@ -37,6 +38,8 @@ class KN_Pendulum_JAX(PendulumAnimation):
 
         self.steps = 0
         self.last_step_time: Optional[float] = None
+        self.draw_trails = draw_trails
+        self.last_points: Optional[jnp.ndarray] = None
 
         print("JIT-compiling vectorized RK4 stepper...")
         self.rk4_step_batch = jax.jit(jax.vmap(pendulums.n_pendulum_rk4_step_jax,
@@ -80,6 +83,7 @@ class KN_Pendulum_JAX(PendulumAnimation):
                     :, 0:self.metadata.n_pendulums]
 
             # Draw rods and bobs with shadows and gradients
+            points = np.zeros((self.k, 2))
             with jax.profiler.TraceAnnotation("drawing pendulums"):
                 py5.stroke_weight(6)
                 py5.color_mode(py5.CMAP, py5.mpl_cmaps.PLASMA, self.k, 1)
@@ -93,8 +97,19 @@ class KN_Pendulum_JAX(PendulumAnimation):
                             math.cos(thetas_np[i, j])
                         py5.line(x0, y0, x, y)
                         x0, y0 = x, y
-
-            # TODO: consider drawing trails?
+                    if self.draw_trails:
+                        if self.last_points is not None:
+                            py5.stroke(0, 1)
+                            self.trail_graphics.begin_draw()
+                            self.trail_graphics.no_fill()
+                            self.trail_graphics.line(
+                                self.last_points[i, 0], self.last_points[i, 1], x0, y0)
+                            self.trail_graphics.end_draw()
+                            py5.image(self.trail_graphics, 0, 0)
+                        points[i, 0] = x0
+                        points[i, 1] = y0
+                if self.draw_trails:
+                    self.last_points = jnp.array(points)
 
 
 def settings() -> None:
@@ -121,7 +136,7 @@ _animation: KN_Pendulum_JAX
 
 if __name__ == "__main__":
     # Pendulum initial conditions
-    theta = np.array([math.pi*0.8, math.pi*0.5, 0])
+    theta = np.array([math.pi*0.8, math.pi*0.5])
     n = theta.shape[0]
     omega = np.array([0.0 for _ in range(n)])
     state0 = np.concatenate((theta, omega))
@@ -133,9 +148,10 @@ if __name__ == "__main__":
             lengths=r,
         ),
         state0=state0,
-        k=80,
-        fps=60,
+        k=10,
+        fps=30,
         m_to_px=200,
+        draw_trails=True
     )
 
     py5.run_sketch()
