@@ -118,11 +118,11 @@ class TrailProjectionAnimation(PendulumAnimation):
             case _:
                 pass
 
-    def draw(self) -> None:
-        """Main draw loop."""
-
         # Integrate physics
         self.integrate_step()
+
+    def draw(self) -> None:
+        """Main draw loop."""
 
         # Extract state
         n = self.metadata.n_pendulums
@@ -295,7 +295,7 @@ if __name__ == "__main__":
         "KEEP_TRAIL", "0") not in ("0", "False", "false")
 
     # Create initial state
-    theta = np.array([math.pi * 0.75, math.pi / 2])
+    theta = np.array([math.pi * 0.75, math.pi / 2, 0, 0])
     n = len(theta)
     omega = np.zeros(n)
     omega[0] = math.pi

@@ -31,6 +31,3 @@ I used poetry to manage and install dependencies. Getting Jax to work on my Surf
 poetry install
 poetry run python -m pip install "jax[cuda13]"
 ```
-
-## Notes
-Coming from a last project in Rust, I used typing throughout - maybe a bit overboard. 

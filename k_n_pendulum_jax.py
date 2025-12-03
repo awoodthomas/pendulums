@@ -40,12 +40,13 @@ class KN_Pendulum_JAX(PendulumAnimation):
 
         print("JIT-compiling vectorized RK4 stepper...")
         self.rk4_step_batch = jax.jit(jax.vmap(pendulums.n_pendulum_rk4_step_jax,
-                                               in_axes=(0, None, None, None, None)))
+                                               in_axes=(0, None, None, None, None, None)),
+                                      static_argnums=(5,))
         print("Warming up JIT...")
         if ENABLE_PROFILING:
             jax.profiler.start_trace("/tmp/profile-data")
         self.rk4_step_batch(self.states, 0.0, self.STEP_SIZE,
-                            self.m_jax, self.r_jax)
+                            self.m_jax, self.r_jax, self.metadata.n_pendulums).block_until_ready()
 
     def predraw_update(self) -> None:
         with jax.profiler.StepTraceAnnotation("integration_step"):
@@ -60,7 +61,7 @@ class KN_Pendulum_JAX(PendulumAnimation):
             if n_steps > 0:
                 for _ in range(n_steps):
                     self.states = self.rk4_step_batch(
-                        self.states, t, self.STEP_SIZE, m, r).block_until_ready()
+                        self.states, t, self.STEP_SIZE, self.m_jax, self.r_jax, self.metadata.n_pendulums).block_until_ready()
                 self.last_step_time += n_steps * self.STEP_SIZE
 
             if ENABLE_PROFILING and self.steps == 30:
@@ -120,7 +121,7 @@ _animation: KN_Pendulum_JAX
 
 if __name__ == "__main__":
     # Pendulum initial conditions
-    theta = np.array([math.pi*0.8, math.pi*0.5])
+    theta = np.array([math.pi*0.8, math.pi*0.5, 0])
     n = theta.shape[0]
     omega = np.array([0.0 for _ in range(n)])
     state0 = np.concatenate((theta, omega))
@@ -132,7 +133,7 @@ if __name__ == "__main__":
             lengths=r,
         ),
         state0=state0,
-        k=20,
+        k=80,
         fps=60,
         m_to_px=200,
     )

@@ -1,6 +1,7 @@
 from typing import Any, Callable, List, Sequence, Tuple, cast
 from dataclasses import dataclass
 
+from cycler import V
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -140,8 +141,12 @@ def double_pendulum_ode_jax(
     m: jax.Array,
     r: jax.Array,
 ) -> jax.Array:
-    """Explicitly coded double pendulum equations of motion. Need to benchmark if this has a
-    performance benefit over the general n-pendulum version (initial results not obvious)."""
+    """Explicitly coded double pendulum equations of motion. No obvious benefit.
+    %timeit -n 10000 pendulums.n_pendulum_ode_jax(0.0, state_jax, r_jax, m_jax, n)
+    218 μs ± 16.1 μs per loop (mean ± std. dev. of 7 runs, 10,000 loops each)
+    %timeit -n 10000 pendulums.double_pendulum_ode_jax(0.0, state_jax, r_jax, m_jax)
+    212 μs ± 28.7 μs per loop (mean ± std. dev. of 7 runs, 10,000 loops each)
+    """
     n = 2
     theta = y[0:n]
     omega = y[n:]
@@ -168,7 +173,7 @@ def n_pendulum_ode_jax(
     n: int,
 ) -> jax.Array:
     """N-pendulum equations of motion. JAX seems to handle the list comprehensions at max function well
-    enough to JIT. Need to benchmark more thoroughly."""
+    enough to JIT, %timeit shows very similar performance to the explicit double pendulum equations."""
 
     theta = y[0:n]
     omega = y[n:]
@@ -207,18 +212,19 @@ def double_pendulum_rk4_step_jax(
     return cast(jax.Array, state + (dt/6)*(k1+2*k2+2*k3+k4))
 
 
-@jax.jit
+@jax.jit(static_argnames=['n'])
 def n_pendulum_rk4_step_jax(
     state: jax.Array,
     t: float,
     dt: float,
     m: jax.Array,
     r: jax.Array,
+    n: int,
 ) -> jax.Array:
-    k1 = n_pendulum_ode_jax(t, state, m, r, 2)
-    k2 = n_pendulum_ode_jax(t + 0.5*dt, state + 0.5*dt*k1, m, r, 2)
-    k3 = n_pendulum_ode_jax(t + 0.5*dt, state + 0.5*dt*k2, m, r, 2)
-    k4 = n_pendulum_ode_jax(t + dt, state + dt*k3, m, r, 2)
+    k1 = n_pendulum_ode_jax(t, state, m, r, n)
+    k2 = n_pendulum_ode_jax(t + 0.5*dt, state + 0.5*dt*k1, m, r, n)
+    k3 = n_pendulum_ode_jax(t + 0.5*dt, state + 0.5*dt*k2, m, r, n)
+    k4 = n_pendulum_ode_jax(t + dt, state + dt*k3, m, r, n)
     return cast(jax.Array, state + (dt/6)*(k1+2*k2+2*k3+k4))
 
 
@@ -260,8 +266,22 @@ def rk4_step_np(
     k4 = f(t + dt, state_in + dt*k3, *args)
     return cast(NDArrayFloat, state_in + (dt/6.0)*(k1 + 2.0*k2 + 2.0*k3 + k4))
 
-# Variational equation predictions
-# y = [th0 th1 thd0 thd1 phi_ravel]
+
+def velocity_verlet_step_np(
+    f: Callable[..., NDArrayFloat],
+    state_in: NDArrayFloat,
+    t: float,
+    dt: float,
+    *args: Any,
+) -> NDArrayFloat:
+    n = len(state_in) // 2
+    r = state_in[0:n]
+    v = state_in[n:]
+    at = f(t, state_in, *args)[n:]
+    r_next = r + v * dt + 0.5 * at * dt**2
+    a_next = f(t + dt, np.concatenate((r_next, v)), *args)[n:]
+    v_next = v + 0.5 * (at + a_next) * dt
+    return np.concatenate((r_next, v_next))
 
 
 def jacobian_fd(
