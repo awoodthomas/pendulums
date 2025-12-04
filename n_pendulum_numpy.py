@@ -104,7 +104,7 @@ class TrailProjectionAnimation(Py5PendulumAnimation):
 
         return perturbed_paths
 
-    def predraw_update(self) -> None:
+    def integration_step(self) -> None:
         """Update phase space projections before drawing. This runs before
         each draw call, and makes uses of some idle time in between draws."""
         match self.p_settings.mode:
@@ -277,7 +277,7 @@ def setup() -> None:
 
 def predraw_update() -> None:
     """py5 predraw callback - updates projections before draw."""
-    _animation.predraw_update()
+    _animation.integration_step()
 
 
 def draw() -> None:

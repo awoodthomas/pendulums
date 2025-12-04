@@ -51,7 +51,7 @@ class KN_Pendulum_JAX(Py5PendulumAnimation):
         self.rk4_step_batch(self.states, 0.0, self.STEP_SIZE,
                             self.m_jax, self.r_jax, self.metadata.n_pendulums).block_until_ready()
 
-    def predraw_update(self) -> None:
+    def integration_step(self) -> None:
         with jax.profiler.StepTraceAnnotation("integration_step"):
             t = time.time()
             self.steps += 1
@@ -121,7 +121,7 @@ def setup() -> None:
 
 
 def predraw_update() -> None:
-    _animation.predraw_update()
+    _animation.integration_step()
 
 
 def draw() -> None:

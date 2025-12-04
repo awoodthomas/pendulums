@@ -58,7 +58,7 @@ class PendulumAnimation:
         """Setup method to be overridden by subclasses."""
         pass
 
-    def predraw_update(self) -> None:
+    def integration_step(self) -> None:
         """Update method to be overridden by subclasses."""
         pass
 
