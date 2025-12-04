@@ -11,7 +11,7 @@ Project for n-pendulum and pendulum-like simulations and visualization. I have a
 
 ## Contents
 - `n_pendulum_numpy.py`: `numpy` based integration. Explores two options for simulating future perturbed paths (very cool for visualizing the chaotic nature of pendulums): one with brute force simulation, the other using some calculus of variations by simulating the state transition matrix. Uses `py5` for display.
-- `k_n_pendulum_jax_vispy.py`: Simulate many pendulums at once on GPU using `jax` and display with `vispy` (utilizing OpenGL under the hood). Can hit 30 fps for 4000 4-link pendulums! Graphics cards are cool.
+- `k_n_pendulum_jax_vispy.py`: Simulate many pendulums at once on GPU using `jax` and display with `vispy` (utilizing OpenGL under the hood). Can hit 30 fps for 10,000 4-link pendulums, or 100,000 double pendulums! Graphics cards are cool.
 - `k_n_pendulum_jax.py`: Original attempt at many pendulum simulation using `py5`. Can hit 30 fps for only ~200 double pendulums, `py5` drawing simply takes too long. 
 - `pendulums.py`: Library for shared functions and data structures.
 
@@ -32,3 +32,6 @@ I used poetry to manage and install dependencies. Getting Jax to work on my Surf
 poetry install
 poetry run python -m pip install "jax[cuda13]"
 ```
+
+# Learnings
+I was optimistic about improving performance with a 2nd order velocity verlet integrator instead of rk4 - first time trying a sympletic integrator. But it did conserve energy as well as rk4, and reducing the timestep to improve that would eliminate benefits.

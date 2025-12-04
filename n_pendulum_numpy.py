@@ -43,10 +43,10 @@ class TrailProjectionAnimation(Py5PendulumAnimation):
         state0: np.ndarray,
         perturbation_settings: 'TrailProjectionAnimation.PerturbationSettings',
         fps: int = 30,
-        m_to_px: int = 200,
+        window_size_px: int = 1000,
         keep_trail: bool = False,
     ):
-        super().__init__(metadata, fps, m_to_px)
+        super().__init__(metadata, fps, window_size_px)
 
         # Simulation state
         self.state = state0
@@ -127,6 +127,7 @@ class TrailProjectionAnimation(Py5PendulumAnimation):
         # Extract state
         n = self.metadata.n_pendulums
         theta = self.state[0:n]
+        omega = self.state[n:2*n]
 
         # Draw background
         self.draw_background()
@@ -141,7 +142,7 @@ class TrailProjectionAnimation(Py5PendulumAnimation):
         self.draw_projections()
 
         # Draw energy display
-        # self.draw_energy_display(theta, omega)
+        self.draw_energy_display(theta, omega)
 
     # TODO: consider using a sympletic integrator (Verlet?) for better energy conservation
     # with lower cost
@@ -295,7 +296,7 @@ if __name__ == "__main__":
         "KEEP_TRAIL", "0") not in ("0", "False", "false")
 
     # Create initial state
-    theta = np.array([math.pi * 0.75, math.pi / 2, 0, 0])
+    theta = np.array([math.pi * 0.75, math.pi / 2])
     n = len(theta)
     omega = np.zeros(n)
     omega[0] = math.pi
@@ -312,7 +313,7 @@ if __name__ == "__main__":
         metadata=metadata,
         state0=state0,
         fps=30,
-        m_to_px=200,
+        window_size_px=1200,
         perturbation_settings=TrailProjectionAnimation.PerturbationSettings(
             n=n,
             mode=projection_mode,

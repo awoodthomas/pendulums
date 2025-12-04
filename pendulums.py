@@ -41,16 +41,16 @@ class PendulumAnimation:
         self,
         metadata: PendulumMetadata,
         fps: int = 30,
-        m_to_px: int = 200,
+        window_size_px: int = 1000,
     ):
         self.metadata = metadata
         self.fps = fps
-        self.m_to_px = m_to_px
+        self.m_to_px = window_size_px / (2 * np.sum(metadata.lengths))
 
         # Calculate canvas size from pendulum lengths
-        self.extent_px = round(np.sum(metadata.lengths) * m_to_px * 2) + 75
-        self.origin_x = self.extent_px // 2
-        self.origin_y = self.extent_px // 2
+        self.window_size_px = window_size_px
+        self.origin_x = self.window_size_px // 2
+        self.origin_y = self.window_size_px // 2
 
         self.steps = 0
 
@@ -70,9 +70,9 @@ class Py5PendulumAnimation(PendulumAnimation):
         self,
         metadata: PendulumMetadata,
         fps: int = 30,
-        m_to_px: int = 200,
+        window_size_px: int = 1000,
     ):
-        super().__init__(metadata, fps, m_to_px)
+        super().__init__(metadata, fps, window_size_px)
 
         # Py5 graphics objects (initialized in setup)
         self.background_graphics: Any = None
@@ -80,7 +80,7 @@ class Py5PendulumAnimation(PendulumAnimation):
 
     def settings(self) -> None:
         """Initialize py5 canvas and graphics objects."""
-        py5.size(self.extent_px, self.extent_px)
+        py5.size(self.window_size_px, self.window_size_px)
 
     def setup(self) -> None:
         py5.frame_rate(self.fps)
@@ -88,9 +88,9 @@ class Py5PendulumAnimation(PendulumAnimation):
 
         # Create graphics buffers
         self.trail_graphics = py5.create_graphics(
-            self.extent_px, self.extent_px)
+            self.window_size_px, self.window_size_px)
         self.background_graphics = py5.create_graphics(
-            self.extent_px, self.extent_px)
+            self.window_size_px, self.window_size_px)
 
         # Pre-render background with gradient and pivot
         self._render_background()
@@ -250,6 +250,21 @@ def n_pendulum_rk4_step_jax(
     return cast(jax.Array, state + (dt/6)*(k1+2*k2+2*k3+k4))
 
 
+@jax.jit(static_argnames=('n', 'x'))
+def x_step_jax(state: jax.Array,
+               t: float,
+               dt: float,
+               m: jax.Array,
+               r: jax.Array,
+               n: int,
+               x: int) -> jax.Array:
+    # Based on testing, not actually very helpful to do this
+    for _ in range(x):
+        state = n_pendulum_rk4_step_jax(
+            state, t, dt, m, r, n)
+    return state
+
+
 # Numpy
 def n_pendulum_ode_np(
     t: float,
@@ -296,12 +311,16 @@ def velocity_verlet_step_np(
     dt: float,
     *args: Any,
 ) -> NDArrayFloat:
+    """Velocity Verlet integration step. As a 2nd order method, this runs in 
+    half the time of RK4. This typically works well for energy conservation for
+    physical systems. However, testing for double pendulums, it does not perform
+    as well as RK4."""
     n = len(state_in) // 2
     r = state_in[0:n]
     v = state_in[n:]
     at = f(t, state_in, *args)[n:]
     r_next = r + v * dt + 0.5 * at * dt**2
-    a_next = f(t + dt, np.concatenate((r_next, v)), *args)[n:]
+    a_next = f(t + dt, np.concatenate((r_next, v + at * dt)), *args)[n:]
     v_next = v + 0.5 * (at + a_next) * dt
     return np.concatenate((r_next, v_next))
 
@@ -349,21 +368,21 @@ def n_pendulum_energy(
 ) -> float:
     """Compute total energy for a state."""
     n = len(theta)
-    k = 0.0
-    u = 0.0
+    kinetic = 0.0
+    potential = 0.0
     m = metadata.masses
     r = metadata.lengths
     for i in range(n):
         v_i_sq = 0.0
         y_i = 0.0
         for j in range(i+1):
-            for k in range(i+1):
-                v_i_sq += r[j] * r[k] * omega[j] * \
-                    omega[k] * np.cos(theta[j]-theta[k])
             y_i += r[j] * np.cos(theta[j])
-        k += 0.5 * m[i] * v_i_sq
-        u -= m[i] * g * y_i
-    return k + u
+            for jj in range(i+1):
+                v_i_sq += r[j] * r[jj] * omega[j] * \
+                    omega[jj] * np.cos(theta[j]-theta[jj])
+        kinetic += 0.5 * m[i] * v_i_sq
+        potential -= m[i] * g * y_i
+    return kinetic + potential
 
 
 def pendulum_coords_for_ang(
