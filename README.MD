@@ -42,9 +42,9 @@ poetry run python -m pip install "jax[cuda13]"
 
 100k double pendulums
 
-[![100k double pendulum youtube](https://www.youtube.com/embed/KNEN0oIcBEo/hqdefault.jpg)](https://www.youtube.com/embed/KNEN0oIcBEo)
+[![100k double pendulum youtube](https://img.youtube.com/vi/KNEN0oIcBEo/hqdefault.jpg)](https://www.youtube.com/embed/KNEN0oIcBEo)
 
 
 10k 4-link pendulums
 
-[![10k 4-link pendulum youtube](https://www.youtube.com/embed/ESgL1ZfOGBo/hqdefault.jpg)](https://www.youtube.com/embed/ESgL1ZfOGBo)
+[![10k 4-link pendulum youtube](https://img.youtube.com/vi/ESgL1ZfOGBo/hqdefault.jpg)](https://www.youtube.com/embed/ESgL1ZfOGBo)
