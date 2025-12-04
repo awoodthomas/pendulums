@@ -36,6 +36,7 @@ class PendulumMetadata:
 
 class PendulumAnimation:
     """Base class for pendulum animation, managing timing and state."""
+    STEP_SIZE = 1 / 60.0  # 60 Hz simulation step size - 0.02 is good enough
 
     def __init__(
         self,
