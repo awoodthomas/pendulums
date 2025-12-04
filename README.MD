@@ -38,13 +38,25 @@ poetry run python -m pip install "jax[cuda13]"
 - I was optimistic about improving performance with a 2nd order velocity verlet integrator instead of rk4 - first time trying a sympletic integrator. But it did conserve energy as well as rk4, and reducing the timestep to improve that would eliminate benefits.
 - vispy 'agg' mode doesn't work on my Surface Laptop WSL - would be nice to have >1px width lines.
 
-# Some videos
+# Some examples
 
-100k double pendulums
+100k double pendulums with `k_n_pendulum.py`
 
 [![100k double pendulum youtube](https://img.youtube.com/vi/KNEN0oIcBEo/hqdefault.jpg)](https://www.youtube.com/embed/KNEN0oIcBEo)
 
 
-10k 4-link pendulums
+10k 4-link pendulums with `k_n_pendulum.py`
 
 [![10k 4-link pendulum youtube](https://img.youtube.com/vi/ESgL1ZfOGBo/hqdefault.jpg)](https://www.youtube.com/embed/ESgL1ZfOGBo)
+
+
+Double pendulum with perturbed path projection with py5
+
+[![double pendulum](https://img.youtube.com/vi/uBswUb7HuDs/hqdefault.jpg)](https://www.youtube.com/embed/uBswUb7HuDs)
+
+Quadruple pendulum with py5
+
+[![quad pendulum](https://img.youtube.com/vi/ZyHcy0-kY-E/hqdefault.jpg)](https://www.youtube.com/embed/ZyHcy0-kY-E)
+
+
+
