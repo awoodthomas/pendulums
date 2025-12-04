@@ -11,8 +11,8 @@ Project for n-pendulum and pendulum-like simulations and visualization. I have a
 
 ## Contents
 - `n_pendulum_numpy.py`: `numpy` based integration. Explores two options for simulating future perturbed paths (very cool for visualizing the chaotic nature of pendulums): one with brute force simulation, the other using some calculus of variations by simulating the state transition matrix. Uses `py5` for display.
-- `k_n_pendulum_jax_vispy.py`: Simulate many pendulums at once on GPU using `jax` and display with `vispy` (utilizing OpenGL under the hood). Can hit 30 fps for 10,000 4-link pendulums, or 100,000 double pendulums! Graphics cards are cool.
-- `k_n_pendulum_jax.py`: Original attempt at many pendulum simulation using `py5`. Can hit 30 fps for only ~200 double pendulums, `py5` drawing simply takes too long. 
+- `k_n_pendulum.py`: Simulate many pendulums at once on GPU using `jax` and display with `vispy` (utilizing OpenGL under the hood). Can hit 30 fps for 10,000 4-link pendulums, or 100,000 double pendulums! Graphics cards are cool. Visuals aren't as done up as the `py5` version.
+- `py5_k_n_pendulum.py`: Original attempt at many pendulum simulation using `py5`. Can hit 30 fps for only ~200 double pendulums, `py5` drawing simply takes too long. 
 - `pendulums.py`: Library for shared functions and data structures.
 
 ### Less interesting contents
