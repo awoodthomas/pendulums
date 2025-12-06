@@ -4,7 +4,6 @@ import numpy as np
 import math
 import time
 import os
-import vispy
 from vispy import app, scene
 from vispy.color import get_colormap
 from vispy.color.colormap import Colormap
@@ -17,7 +16,6 @@ from pendulums import PendulumMetadata, PendulumAnimation
 class KN_Pendulum_JAX_vispy(PendulumAnimation):
     """n-pendulum simulation using JAX for acceleration and batching."""
     P_MAGNITUDE = 1e-5
-    STEP_SIZE = 1 / 60.0  # 60 Hz simulation step size - 0.02 is good enough
 
     def __init__(self,
                  pendulum_metadata: PendulumMetadata,
@@ -40,7 +38,6 @@ class KN_Pendulum_JAX_vispy(PendulumAnimation):
                                            maxval=self.P_MAGNITUDE)
         self.states = self.states.at[:, :n].add(perturbations[:, :n])
         self.colormap = colormap
-        self.steps = 0
 
     def setup(self) -> None:
         """Set up vispy graphics objects for drawing pendulums."""
@@ -174,6 +171,7 @@ class KN_Pendulum_JAX_vispy(PendulumAnimation):
             print("Stopped profiling trace.")
 
     def frame_step_and_capture(self, t) -> np.ndarray:
+        """Step the animation and capture the current frame as an image. Used for video output."""
         self.frame_step(None)
         # Read the pixels from the vispy canvas
         # self.canvas.update()
@@ -187,7 +185,7 @@ class KN_Pendulum_JAX_vispy(PendulumAnimation):
 
         self.canvas.show()
         self.timer = app.Timer(
-            1.0/args.fps, connect=self.frame_step, start=True)
+            1.0/self.fps, connect=self.frame_step, start=True)
 
         app.run()
 
