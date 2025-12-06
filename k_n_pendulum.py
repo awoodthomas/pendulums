@@ -49,7 +49,7 @@ class KN_Pendulum_JAX_vispy(PendulumAnimation):
         t = time.time()
         if ENABLE_PROFILING:
             jax.profiler.start_trace("/tmp/profile-data")
-        self.rk4_step_batch(self.states, 0.0, self.STEP_SIZE,
+        self.rk4_step_batch(self.states, 0.0, self.step_size,
                             self.m_jax, self.r_jax, self.metadata.n_pendulums).block_until_ready()
         print(f"JIT warmup complete after {time.time()-t:.1f}s.")
 
@@ -120,12 +120,12 @@ class KN_Pendulum_JAX_vispy(PendulumAnimation):
             # I tested making a JITd function to take multiple steps at once on GPU.
             # Did not see any benefit, and has a high compile cost since number of steps
             # is a static variable (compiled per value). So keeping it simple
-            n_steps = min(round((1 / self.fps) / self.STEP_SIZE), 5)
+            n_steps = min(round((1 / self.fps) / self.step_size), 5)
             if n_steps > 0:
                 for _ in range(n_steps):
                     with jax.profiler.StepTraceAnnotation("substep"):
                         self.states = self.rk4_step_batch(
-                            self.states, self.steps*self.fps, self.STEP_SIZE, self.m_jax, self.r_jax, self.metadata.n_pendulums).block_until_ready()
+                            self.states, self.steps*self.fps, self.step_size, self.m_jax, self.r_jax, self.metadata.n_pendulums).block_until_ready()
 
             if ENABLE_PROFILING and self.steps == 30:
                 jax.profiler.stop_trace()

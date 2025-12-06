@@ -166,8 +166,8 @@ class TrailProjectionAnimation(Py5PendulumAnimation):
     # Consider using sympletic Verlet integrator, did not conserve energy well
     def integrate_step(self) -> None:
         """Integrate the pendulum state forward in time."""
-        t = self.steps * self.STEP_SIZE
-        n_steps = max(min(round((1 / self.fps) / self.STEP_SIZE), 5), 1)
+        t = self.steps * self.step_size
+        n_steps = max(min(round((1 / self.fps) / self.step_size), 5), 1)
 
         if n_steps > 0:
             for _ in range(n_steps):
@@ -175,7 +175,7 @@ class TrailProjectionAnimation(Py5PendulumAnimation):
                     pendulums.n_pendulum_ode_np,
                     self.state,
                     t,
-                    self.STEP_SIZE,
+                    self.step_size,
                     self.metadata
                 )
         self.steps += 1
@@ -215,7 +215,8 @@ class TrailProjectionAnimation(Py5PendulumAnimation):
                     self.trail_graphics.stroke(
                         3, 244, 252, alpha_factor * t_frac)
                 else:
-                    self.trail_graphics.stroke(3, 244, 252, alpha_factor)
+                    # self.trail_graphics.stroke(3, 244, 252, alpha_factor)
+                    self.trail_graphics.stroke(244, 5, 5, alpha_factor)
 
                 x, y = pts[i]
                 x1, y1 = pts[i + 1]
@@ -430,4 +431,5 @@ if __name__ == "__main__":
         keep_trail=args.keep_trail,
         export_frames=args.export_frames,
     )
+    _animation.step_size = 0.01
     py5.run_sketch()

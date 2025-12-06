@@ -7,6 +7,7 @@ import jax.numpy as jnp
 import numpy as np
 import numpy.typing as npt
 import py5
+import matplotlib.pyplot as plt
 
 
 NDArrayFloat = npt.NDArray[np.floating]
@@ -36,7 +37,7 @@ class PendulumMetadata:
 
 class PendulumAnimation:
     """Base class for pendulum animation, managing timing and state."""
-    STEP_SIZE = 1 / 60.0  # 60 Hz simulation step size - 0.02 is good enough
+    DEFAULT_STEP_SIZE = 1 / 30.0  # 60 Hz simulation step size - 0.033 is OK
 
     def __init__(
         self,
@@ -52,7 +53,7 @@ class PendulumAnimation:
         self.window_size_px = window_size_px
         self.origin_x = self.window_size_px // 2
         self.origin_y = self.window_size_px // 2
-
+        self.step_size = self.DEFAULT_STEP_SIZE
         self.steps = 0
 
     def setup(self) -> None:
@@ -399,3 +400,114 @@ def pendulum_coords_for_ang(
         x0, y0 = x, y
         coords.append(np.array([x, y]))
     return coords
+
+
+class PendulumCmapSettings:
+    def __init__(
+        self,
+        brightness: float = 1.0,
+        red_gain: float = 1.0,
+        green_gain: float = 1.0,
+        blue_gain: float = 1.0,
+        contrast: float = 1.0,
+        phase_u_r: float = 0.0,
+        phase_v_g: float = 0.0,
+        phase_uv_b: float = 0.0,
+    ):
+        self.brightness = brightness
+        self.red_gain = red_gain
+        self.green_gain = green_gain
+        self.blue_gain = blue_gain
+        self.contrast = contrast
+        self.phase_u_r = phase_u_r
+        self.phase_v_g = phase_v_g
+        self.phase_uv_b = phase_uv_b
+
+
+def cmap_pendulum(k: int, settings: PendulumCmapSettings = PendulumCmapSettings()) -> np.ndarray:
+    """Generate a custom map for coloring the pendulums.
+    shape = k x k x 3, with RGB values in [0, 255]. Colors at the edges are
+    symmetrical, to account for wrapping from -pi to pi.
+    """
+    # Unpack settings
+    brightness = settings.brightness
+    red_gain = settings.red_gain
+    green_gain = settings.green_gain
+    blue_gain = settings.blue_gain
+    contrast = settings.contrast
+    phase_u_r = settings.phase_u_r
+    phase_v_g = settings.phase_v_g
+    phase_uv_b = settings.phase_uv_b
+
+    cmap = np.zeros((k, k, 3), dtype=np.uint8)
+
+    for i in range(k):
+        u = i / k + 0.5  # 0..1
+
+        for j in range(k):
+            v = j / k + 0.5  # 0..1
+
+            # Periodic base signals (edges match)
+            r = 0.5 * (1.0 - np.cos(2 * np.pi * (u + phase_u_r)))
+            g = 0.5 * (1.0 - np.cos(2 * np.pi * (v + phase_v_g)))
+            b = 0.5 * (1.0 - np.cos(2 * np.pi * (-u+v + phase_uv_b)))
+
+            # Apply contrast around 0.5
+            r = 0.5 + (r - 0.5) * contrast
+            g = 0.5 + (g - 0.5) * contrast
+            b = 0.5 + (b - 0.5) * contrast
+
+            # Apply per-channel gains and global brightness
+            r = np.clip(r * red_gain * brightness, 0.0, 1.0)
+            g = np.clip(g * green_gain * brightness, 0.0, 1.0)
+            b = np.clip(b * blue_gain * brightness, 0.0, 1.0)
+
+            cmap[i, j] = [
+                int(r * 255),
+                int(g * 255),
+                int(b * 255),
+            ]
+
+    return cmap
+
+
+def cmap_pendulum1(k) -> np.ndarray:
+    # Set phase so that instead of -cos we effectively get +sin
+    settings = PendulumCmapSettings(
+        phase_u_r=0.25, phase_v_g=0.25, phase_uv_b=0.25)
+
+    return cmap_pendulum(k, settings)
+
+
+def cmap_pendulum2(k) -> np.ndarray:
+    settings = PendulumCmapSettings(
+        green_gain=0.5,
+        blue_gain=0.5,
+        contrast=0.8)
+
+    return cmap_pendulum(k, settings)
+
+
+def radial_sym_matplotlib(name: str, k: int) -> np.ndarray:
+    """
+    Radially symmetric colormap using matplotlib's inferno.
+    Returns an array of shape (k, k, 3) with uint8 RGB values.
+    """
+    cmap_mpl = plt.get_cmap(name)
+
+    # Normalized coordinates in [-1, 1] with center at (0, 0)
+    x = np.linspace(-1.0, 1.0, k)
+    y = np.linspace(-1.0, 1.0, k)
+    xx, yy = np.meshgrid(x, y, indexing="xy")
+
+    # Radius from center, in [0, sqrt(2)]
+    r = np.sqrt(xx**2 + yy**2)
+
+    # Normalize radius to [0, 1] and clip
+    r_norm = np.clip(r / np.sqrt(2.0), 0.0, 1.0)
+
+    # Sample inferno; mpl returns RGBA in [0,1]
+    rgba = cmap_mpl(r_norm)
+    rgb = (rgba[..., :3] * 255).astype(np.uint8)
+
+    return rgb
