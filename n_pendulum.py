@@ -7,7 +7,8 @@ import line_profiler
 import numpy as np
 import math
 import py5
-import time
+import threading
+import queue
 import os
 import scipy.integrate
 import pendulums
@@ -64,8 +65,12 @@ class TrailProjectionAnimation(Py5PendulumAnimation):
 
         # Animation state
         self.last_bob_coords: List[Tuple[float, float]] = []
-        self.f_paths: Optional[np.ndarray] = None
-        self.f_paths_var: Optional[np.ndarray] = None
+
+        # Threading
+        self.running = False
+        self.state_queue = queue.Queue(maxsize=2)
+        self.f_paths = queue.Queue(maxsize=2)
+        self.f_paths_var = queue.Queue(maxsize=2)
 
     @line_profiler.profile
     def generate_perturbed_trajectories(self) -> np.ndarray:
@@ -112,23 +117,37 @@ class TrailProjectionAnimation(Py5PendulumAnimation):
 
         return perturbed_paths
 
-    @line_profiler.profile
-    def integration_step(self) -> None:
-        """Update phase space projections before drawing. This runs before
-        each draw call, and makes uses of some idle time in between draws."""
-        match self.p_settings.mode:
-            case self.PerturbationSettings.PerturbationMode.BOTH:
-                self.f_paths = self.generate_perturbed_trajectories()
-                self.f_paths_var = self.generate_perturbed_trajectories_var()
-            case self.PerturbationSettings.PerturbationMode.INTEGRATOR:
-                self.f_paths = self.generate_perturbed_trajectories()
-            case self.PerturbationSettings.PerturbationMode.VARIATIONAL:
-                self.f_paths_var = self.generate_perturbed_trajectories_var()
-            case _:
-                pass
+    def simulation_loop(self) -> None:
+        """Runs in a separate thread to compute frames."""
+        n_steps = max(round((1.0/self.fps) / self.STEP_SIZE), 1)
 
-        # Integrate physics
-        self.integrate_step()
+        while self.running:
+            # 1. Generate perturbed trajectories
+            match self.p_settings.mode:
+                case self.PerturbationSettings.PerturbationMode.BOTH:
+                    self.f_paths.put(self.generate_perturbed_trajectories())
+                    self.f_paths_var.put(
+                        self.generate_perturbed_trajectories_var())
+                case self.PerturbationSettings.PerturbationMode.INTEGRATOR:
+                    self.f_paths.put(self.generate_perturbed_trajectories())
+                case self.PerturbationSettings.PerturbationMode.VARIATIONAL:
+                    self.f_paths_var.put(
+                        self.generate_perturbed_trajectories_var())
+                case _:
+                    pass
+
+            # 2. Integration
+            for _ in range(n_steps):
+                self.state = pendulums.rk4_step_np(
+                    pendulums.n_pendulum_ode_np,
+                    self.state,
+                    0.0,  # not time dependent
+                    self.STEP_SIZE,
+                    self.metadata
+                )
+
+            # 3. Put in queue (blocks if queue is full, throttling the sim)
+            self.state_queue.put(self.state)
 
     @line_profiler.profile
     def draw(self) -> None:
@@ -136,8 +155,9 @@ class TrailProjectionAnimation(Py5PendulumAnimation):
 
         # Extract state
         n = self.metadata.n_pendulums
-        theta = self.state[0:n]
-        omega = self.state[n:2*n]
+        state = self.state_queue.get()
+        theta = state[0:n]
+        omega = state[n:2*n]
 
         # Draw background
         self.draw_background()
@@ -152,7 +172,7 @@ class TrailProjectionAnimation(Py5PendulumAnimation):
         self.draw_projections()
 
         # Draw energy display
-        # self.draw_energy_display(theta, omega)
+        self.draw_energy_display(theta, omega)
 
         # Save frame if export enabled
         if self.export_frames and self.frames_folder:
@@ -162,23 +182,6 @@ class TrailProjectionAnimation(Py5PendulumAnimation):
             if self.frame_count % self.fps == 0:
                 print(
                     f"Exported {self.frame_count} frames ({self.frame_count / self.fps} s)...")
-
-    # Consider using sympletic Verlet integrator, did not conserve energy well
-    def integrate_step(self) -> None:
-        """Integrate the pendulum state forward in time."""
-        t = self.steps * self.STEP_SIZE
-        n_steps = max(min(round((1 / self.fps) / self.STEP_SIZE), 5), 1)
-
-        if n_steps > 0:
-            for _ in range(n_steps):
-                self.state = pendulums.rk4_step_np(
-                    pendulums.n_pendulum_ode_np,
-                    self.state,
-                    t,
-                    self.STEP_SIZE,
-                    self.metadata
-                )
-        self.steps += 1
 
     def draw_trail(self, last_bob_pos: Tuple[float, float]) -> None:
         """Draw the trajectory trail of the last bob."""
@@ -227,12 +230,13 @@ class TrailProjectionAnimation(Py5PendulumAnimation):
     def draw_projections(self) -> None:
         """Draw the perturbed future path projections.
         Integrated vs. variational paths are shown in different colors"""
-        if self.f_paths is not None:
-            perturbations = len(self.f_paths)
+        try:
+            f_paths = self.f_paths.get_nowait()
+            perturbations = len(f_paths)
             py5.color_mode(py5.CMAP, py5.mpl_cmaps.PLASMA, perturbations, 1)
 
             for i in range(perturbations):
-                s_fp = self.f_paths[i, :, :]
+                s_fp = f_paths[i, :, :]
 
                 with py5.begin_shape():  # type: ignore
                     py5.stroke_weight(3)
@@ -249,9 +253,12 @@ class TrailProjectionAnimation(Py5PendulumAnimation):
                                 self.metadata.lengths[j] * \
                                 self.m_to_px * np.cos(s[j])
                         py5.curve_vertex(x, y)
+        except queue.Empty:
+            pass
 
-        if self.f_paths_var is not None:
-            perturbations = len(self.f_paths_var)
+        try:
+            f_paths_var = self.f_paths_var.get_nowait()
+            perturbations = len(f_paths_var)
             if self.p_settings.mode == self.PerturbationSettings.PerturbationMode.BOTH:
                 py5.color_mode(py5.CMAP, py5.mpl_cmaps.OCEAN, perturbations, 1)
             else:
@@ -259,7 +266,7 @@ class TrailProjectionAnimation(Py5PendulumAnimation):
                                perturbations, 1)
 
             for i in range(perturbations):
-                s_fp = self.f_paths_var[i, :, :]
+                s_fp = f_paths_var[i, :, :]
 
                 with py5.begin_shape():  # type: ignore
                     py5.stroke_weight(3)
@@ -276,6 +283,8 @@ class TrailProjectionAnimation(Py5PendulumAnimation):
                                 self.metadata.lengths[j] * \
                                 self.m_to_px * np.cos(s[j])
                         py5.curve_vertex(x, y)
+        except queue.Empty:
+            pass
 
     def draw_energy_display(self, theta: np.ndarray, omega: np.ndarray) -> None:
         """Draw the energy display overlay."""
@@ -283,6 +292,13 @@ class TrailProjectionAnimation(Py5PendulumAnimation):
         py5.fill(255, 255, 255)
         py5.text_size(16)
         py5.text(f"Total Energy: {energy:.2f} J", 10, 20)
+
+    def setup(self) -> None:
+        super().setup()
+        self.running = True
+        self.simulation_thread = threading.Thread(
+            target=self.simulation_loop, daemon=True)
+        self.simulation_thread.start()
 
 
 # Module-level instance for py5 callbacks
@@ -431,3 +447,6 @@ if __name__ == "__main__":
         export_frames=args.export_frames,
     )
     py5.run_sketch()
+    _animation.running = False
+    if _animation.simulation_thread:
+        _animation.simulation_thread.join()
