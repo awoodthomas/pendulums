@@ -5,27 +5,33 @@ import threading
 import queue
 from jax import numpy as jnp
 import numpy as np
-import vispy
 from vispy import app, scene
 from vispy.scene.visuals import Image, Text, Line, Rectangle
+from vispy.gloo.util import _screenshot
 import pendulums
 from pendulums import PendulumMetadata, PendulumAnimation
 import colorstamps
 
 
-class DoublePendulumStability(PendulumAnimation):
+class DoublePendulumStabilityFractal(PendulumAnimation):
 
-    def __init__(self, metadata: PendulumMetadata, n_states: int = 1000, fps: int = 30, cmap: str = 'teuling0f', trippy: bool = False) -> None:
+    def __init__(self,
+                 metadata: PendulumMetadata,
+                 omega1: float = 0.0,
+                 omega2: float = 0.0,
+                 n_states: int = 1000,
+                 fps: int = 30, cmap:
+                 str = 'teuling0f',
+                 trippy: bool = False) -> None:
         if metadata.n_pendulums != 2:
             raise ValueError(
                 "DoublePendulumStability only supports 2-pendulums.")
         super().__init__(metadata, fps, window_size_px=n_states)
         self.m_jax = jnp.array(metadata.masses)
         self.r_jax = jnp.array(metadata.lengths)
-
-        self.theta1_min, self.theta1_max = -jnp.pi, jnp.pi
-        self.theta2_min, self.theta2_max = -jnp.pi, jnp.pi
-        self.init_states()
+        self.omega1 = omega1
+        self.omega2 = omega2
+        self.init_states(omega1=omega1, omega2=omega2)
 
         # Store as uint8 for faster data transfer to vispy
         if 'pendulum' in cmap:
@@ -55,7 +61,9 @@ class DoublePendulumStability(PendulumAnimation):
         self.selection_start = None
         self.trippy = trippy
 
-    def init_states(self, t1_min=-jnp.pi, t1_max=jnp.pi, t2_min=-jnp.pi, t2_max=jnp.pi):
+    def init_states(self, t1_min=-jnp.pi, t1_max=jnp.pi, t2_min=-jnp.pi, t2_max=jnp.pi, omega1=0.0, omega2=0.0) -> None:
+        self.theta1_min, self.theta1_max = t1_min, t1_max
+        self.theta2_min, self.theta2_max = t2_min, t2_max
         theta1 = jnp.linspace(t1_min, t1_max, self.window_size_px)
         theta2 = jnp.linspace(t2_min, t2_max, self.window_size_px)
         theta1_grid, theta2_grid = jnp.meshgrid(theta1, theta2, indexing='xy')
@@ -63,8 +71,10 @@ class DoublePendulumStability(PendulumAnimation):
             shape=(self.window_size_px, self.window_size_px, 4))
         self.states = self.states.at[:, :, 0].set(theta1_grid)
         self.states = self.states.at[:, :, 1].set(theta2_grid)
+        self.states = self.states.at[:, :, 2].set(omega1)
+        self.states = self.states.at[:, :, 3].set(omega2)
 
-    def setup_animation(self) -> None:
+    def setup(self) -> None:
         """Set up vispy graphics objects for drawing pendulums."""
         print("JIT-compiling vectorized RK4 stepper...")
         if ENABLE_PROFILING:
@@ -97,7 +107,7 @@ class DoublePendulumStability(PendulumAnimation):
         self.canvas.connect(self.on_key_release)
 
         self.selection_line = Line(
-            color='white', width=2, parent=self.view.scene)
+            color='white', width=2, parent=self.view.scene)  # type: ignore
         self.selection_line.visible = False
 
         self.image = Image(
@@ -107,12 +117,12 @@ class DoublePendulumStability(PendulumAnimation):
         self.image.order = 0
 
         self.info_text_bg = Rectangle(
-            color=(1, 1, 1, 1), border_color='black', center=(0, 0, -0.1), parent=self.view.scene)
+            color=(1, 1, 1, 1), border_color='black', center=(0, 0, -0.1), parent=self.view.scene)  # type: ignore
         self.info_text_bg.order = 10
         self.info_text_bg.visible = False
 
         self.info_text = Text(text="", color='black', font_size=10,
-                              anchor_x='left', anchor_y='top', parent=self.view.scene)
+                              anchor_x='left', anchor_y='top', parent=self.view.scene)  # type: ignore
         self.info_text.order = 11
 
     def simulation_loop(self) -> None:
@@ -123,8 +133,8 @@ class DoublePendulumStability(PendulumAnimation):
             # Handle reset of simulation range
             if self.reset_event.is_set():
                 if self.new_bounds:
-                    self.theta1_min, self.theta1_max, self.theta2_min, self.theta2_max = self.new_bounds
-                    self.init_states(*self.new_bounds)
+                    self.init_states(*self.new_bounds,
+                                     omega1=self.omega1, omega2=self.omega2)
                     self.new_bounds = None
                     n_steps = max(round((1.0/self.fps) / self.step_size), 1)
                 self.reset_event.clear()
@@ -164,6 +174,16 @@ class DoublePendulumStability(PendulumAnimation):
             pass
     # print(f"Completed frame {self.steps}, {self.fps} FPS")
 
+    def frame_step_and_capture(self, t) -> np.ndarray:
+        """Step the animation and capture the current frame as an image. Used for video output."""
+        self.animation_step(None)
+        # Read the pixels from the vispy canvas
+        # self.canvas.update()
+        app.process_events()  # Process any pending events to ensure rendering is complete
+        img = _screenshot((0, 0, self.window_size_px, self.window_size_px))[
+            :, :, :3]
+        return img
+
     def state_to_RGB(self, state: jnp.ndarray, cmap: jnp.ndarray, extramod=2*jnp.pi) -> jnp.ndarray:
         """Convert a single pendulum state to an RGB color."""
         assert state.shape == (4,)
@@ -172,14 +192,18 @@ class DoublePendulumStability(PendulumAnimation):
             * self.window_size_px)
         return cmap[normalized[0], normalized[1]]
 
-    def start_animation(self) -> None:
-        self.setup_animation()
-
-        # Start simulation thread
+    def start_simulation(self) -> None:
+        """Start the simulation thread."""
         self.running = True
         self.simulation_thread = threading.Thread(
             target=self.simulation_loop, daemon=True)
         self.simulation_thread.start()
+
+    def start_animation(self) -> None:
+        self.setup()
+
+        # Start simulation thread
+        self.start_simulation()
 
         self.canvas.show()
         self.timer = app.Timer(
@@ -355,11 +379,13 @@ if __name__ == "__main__":
                         help='Colormap to use. Accepts colorstamps (e.g. teuling0f), and any matplotlib sequential in the form radial_viridis. Recommended cmaps: teuling0f, fourCorners, radial_inferno, radial_ocean, pendulum1, pendulum2, pendulum3')
     parser.add_argument('--trippy', action='store_true',
                         help='Use trippier color mapping (bad modulus)')
+    parser.add_argument('--omega', type=float, default=[0.0, 0.0], nargs=2,
+                        help='Initial angular velocities for the two pendulums in deg/s')
     args = parser.parse_args()
     metadata = PendulumMetadata(
         lengths=np.ones(2),
         masses=np.ones(2),
     )
-    animation = DoublePendulumStability(
-        metadata, n_states=args.n_states, fps=args.fps, cmap=args.cmap, trippy=args.trippy)
+    animation = DoublePendulumStabilityFractal(
+        metadata, n_states=args.n_states, fps=args.fps, cmap=args.cmap, trippy=args.trippy, omega1=np.deg2rad(args.omega[0]), omega2=np.deg2rad(args.omega[1]))
     animation.start_animation()
