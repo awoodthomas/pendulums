@@ -49,6 +49,7 @@ class TrailProjectionAnimation(Py5PendulumAnimation):
         window_size_px: int = 1000,
         keep_trail: bool = False,
         export_frames: bool = False,
+        dt: Optional[float] = None,
     ):
         super().__init__(metadata, fps, window_size_px)
 
@@ -66,6 +67,9 @@ class TrailProjectionAnimation(Py5PendulumAnimation):
         self.last_bob_coords: List[Tuple[float, float]] = []
         self.f_paths: Optional[np.ndarray] = None
         self.f_paths_var: Optional[np.ndarray] = None
+
+        if dt is not None:
+            self.step_size = dt
 
     @line_profiler.profile
     def generate_perturbed_trajectories(self) -> np.ndarray:
@@ -167,7 +171,7 @@ class TrailProjectionAnimation(Py5PendulumAnimation):
     def integrate_step(self) -> None:
         """Integrate the pendulum state forward in time."""
         t = self.steps * self.step_size
-        n_steps = max(min(round((1 / self.fps) / self.step_size), 5), 1)
+        n_steps = min(round((1 / self.fps) / self.step_size), 1)
 
         if n_steps > 0:
             for _ in range(n_steps):
@@ -215,8 +219,9 @@ class TrailProjectionAnimation(Py5PendulumAnimation):
                     self.trail_graphics.stroke(
                         3, 244, 252, alpha_factor * t_frac)
                 else:
-                    # self.trail_graphics.stroke(3, 244, 252, alpha_factor)
-                    self.trail_graphics.stroke(244, 5, 5, alpha_factor)
+                    self.trail_graphics.stroke(3, 244, 252, alpha_factor)
+                    # self.trail_graphics.stroke(
+                    #     219, 83, 94, alpha_factor)  # red for hearts
 
                 x, y = pts[i]
                 x1, y1 = pts[i + 1]
@@ -321,7 +326,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description='n-pendulum simulation with trail tracking and future perturbed path projections',
+        description='n-pendulum simulation with trail tracking and future perturbed path projections.',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         epilog='Example: python n_pendulum.py --theta 135 90 --omega 180 0 --projection VARIATIONAL --num-perturbations 5'
     )
@@ -335,7 +340,13 @@ if __name__ == "__main__":
     # Initial conditions (in degrees)
     parser.add_argument('--theta', type=float, nargs='+',
                         default=[126.0, 72.0],
-                        help='Initial angles in degrees (one per pendulum segment)')
+                        help='''Initial angles in degrees (one per pendulum segment). Some stable initial conditions for unit r & m (may need <0.02 dt):   
+                            --theta 128.2 -27.1  
+                            --theta 127.58 -121.15 (a heart!)  
+                            --theta 175 10.44 (doesn't flip)  
+                            --theta 60.4 -113.55 (asymmetric)  
+                            --theta 101.1 -27.4
+                            ( --theta 118.93 61.16 --omega 0 360 ) ( high energy multi-flip heart)''')
     parser.add_argument('--omega', type=float, nargs='+',
                         default=[],
                         help='Initial angular velocities in degrees/s (one per pendulum segment, defaults to zeros)')
@@ -347,6 +358,9 @@ if __name__ == "__main__":
     parser.add_argument('--radius', type=float, nargs='+',
                         default=[],
                         help='Lengths/radii for each pendulum segment (defaults to ones)')
+    parser.add_argument('--dt', type=float,
+                        default=pendulums.PendulumAnimation.DEFAULT_STEP_SIZE,
+                        help='Time step for integration (overrides default)')
 
     # Perturbation settings
     parser.add_argument('--projection', type=str, default='NONE',
@@ -367,7 +381,7 @@ if __name__ == "__main__":
                         help='Keep trail of pendulum motion')
     parser.add_argument('--speed', type=float, default=1.0,)
     parser.add_argument('--export-frames', action='store_true',
-                        help='Export each frame as PNG to a py5frames-date-time folder. To generate a video:ffmpeg -framerate 60 -i frame%d.png -c:v libx264 -crf 15 -preset slow -pix_fmt yuv420p output.mp4 ')
+                        help='Export each frame as PNG to a py5frames-date-time folder. To generate a video:ffmpeg -framerate 60 -i frame%%d.png -c:v libx264 -crf 15 -preset slow -pix_fmt yuv420p output.mp4 ')
 
     args = parser.parse_args()
 
@@ -430,6 +444,6 @@ if __name__ == "__main__":
         ),
         keep_trail=args.keep_trail,
         export_frames=args.export_frames,
+        dt=args.dt
     )
-    _animation.step_size = 0.01
     py5.run_sketch()
