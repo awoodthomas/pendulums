@@ -38,7 +38,7 @@ poetry run python -m pip install "jax[cuda13]"
 ```
 
 # Learnings & issues
-- I was optimistic about improving performance with a 2nd order velocity verlet integrator instead of rk4 - first time trying a sympletic integrator. But it did conserve energy as well as rk4, and reducing the timestep to improve that would eliminate benefits.
+- I was optimistic about improving performance with a 2nd order velocity verlet integrator instead of rk4 - first time trying a sympletic integrator. But it didn't conserve energy as well as rk4, and reducing the timestep to improve that would eliminate benefits.
 - vispy 'agg' mode doesn't work on my Surface Laptop WSL - would be nice to have >1px width lines.
 - I cannot get the text background rectangle in Vispy to fill over the fractal image...
 - I seem to have hit a limit with Jax performance on my machine - I can't get an RK4 simulation step with Jax faster than ~13 ms. 
